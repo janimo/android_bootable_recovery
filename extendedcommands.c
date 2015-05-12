@@ -219,7 +219,7 @@ int install_zip(const char* packagefilepath) {
     }
 #endif
 
-    ui_set_background(BACKGROUND_ICON_CLOCKWORK);
+    ui_set_background(BACKGROUND_ICON_UBUNTU);
     ui_print("\nInstall from sdcard complete.\n");
     return 0;
 }
@@ -1545,10 +1545,12 @@ int show_advanced_menu() {
     }
 
     list[list_index++] = "power off";
+#ifdef NOTUBUNTU
     list[list_index++] = "wipe dalvik cache";
     list[list_index++] = "report error";
     list[list_index++] = "key test";
     list[list_index++] = "show log";
+#endif
 #ifdef BOARD_NATIVE_DUALBOOT_SINGLEDATA
     int index_tdb = list_index++;
     int index_bootmode = list_index++;
@@ -1837,6 +1839,8 @@ int verify_root_and_recovery() {
         }
     }
 
+    /* Don't offer user to root the device by default as he could be just installing Ubuntu instead */
+    /*
     if (!exists) {
         ui_show_text(1);
         ret = 1;
@@ -1844,6 +1848,7 @@ int verify_root_and_recovery() {
             __system("/sbin/install-su.sh");
         }
     }
+    */
 
     ensure_path_unmounted("/system");
     return ret;

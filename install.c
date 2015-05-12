@@ -411,6 +411,7 @@ really_install_package(const char *path)
 
     int err;
 
+    /* Disabled to allow easy deploy for phablet
     if (signature_check_enabled) {
         int numKeys;
         Certificate* loadedKeys = load_keys(PUBLIC_KEYS_FILE, &numKeys);
@@ -436,6 +437,7 @@ really_install_package(const char *path)
                 return INSTALL_CORRUPT;
         }
     }
+    */
 
     /* Try to open the package.
      */

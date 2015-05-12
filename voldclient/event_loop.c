@@ -87,7 +87,7 @@ static int split(char *str, char **splitstr) {
     return i;
 }
 
-extern int vold_dispatch(int code, char** tokens, int len);
+extern int vold_dispatch(int code, char** tokens);
 
 static int handle_response(char* response) {
 
@@ -98,7 +98,7 @@ static int handle_response(char* response) {
     code = atoi(tokens[0]);
 
     if (len) {
-        vold_dispatch(code, tokens, len);
+        vold_dispatch(code, tokens);
 
         for (i = 0; i < len; i++)
             free(tokens[i]);
@@ -180,7 +180,7 @@ out:
     return code;
 }
 
-static void *event_thread_func(void* v) {
+static void *event_thread_func(__attribute__((unused))void* v) {
 
     // if monitor() returns, it means we lost the connection to vold
     while (1) {

@@ -56,16 +56,21 @@ static const struct option OPTIONS[] = {
   { "send_intent", required_argument, NULL, 's' },
   { "update_package", required_argument, NULL, 'u' },
   { "headless", no_argument, NULL, 'h' },
+  { "user_data_update_package", required_argument, NULL, 'd' },
   { "wipe_data", no_argument, NULL, 'w' },
   { "wipe_cache", no_argument, NULL, 'c' },
   { "show_text", no_argument, NULL, 't' },
   { "sideload", no_argument, NULL, 'l' },
   { "shutdown_after", no_argument, NULL, 'p' },
+  { "update-ubuntu", no_argument, NULL, 'v' },
   { NULL, 0, NULL, 0 },
 };
 
 #define LAST_LOG_FILE "/cache/recovery/last_log"
 static const char *CACHE_LOG_DIR = "/cache/recovery";
+static const char *UBUNTU_COMMAND_FILE = "/cache/recovery/ubuntu_command";
+static const char *UBUNTU_ARGUMENT = "--update-ubuntu";
+static const char *UBUNTU_UPDATE_SCRIPT = "/sbin/system-image-upgrader";
 static const char *COMMAND_FILE = "/cache/recovery/command";
 static const char *INTENT_FILE = "/cache/recovery/intent";
 static const char *LOG_FILE = "/cache/recovery/log";
@@ -151,7 +156,8 @@ fopen_path(const char *path, const char *mode) {
     if (strchr("wa", mode[0])) dirCreateHierarchy(path, 0777, NULL, 1, sehandle);
 
     FILE *fp = fopen(path, mode);
-    if (fp == NULL && path != COMMAND_FILE) LOGE("Can't open %s\n", path);
+    if (fp == NULL && !(path == COMMAND_FILE || path == UBUNTU_COMMAND_FILE))
+        LOGE("Can't open %s\n", path);
     return fp;
 }
 
@@ -200,6 +206,22 @@ get_args(int *argc, char ***argv) {
         }
     }
 
+    // ----if that doesn't work, try Ubuntu command file
+    if (*argc <= 1) {
+        FILE *fp = fopen_path(UBUNTU_COMMAND_FILE, "r");
+        if (fp != NULL) {
+            // there is Ubuntu command file, use it
+            // there is no need to read file content for now
+            check_and_fclose(fp, UBUNTU_COMMAND_FILE);
+            char *argv0 = (*argv)[0];
+            *argv = (char **) malloc(sizeof(char *) * MAX_ARGS);
+            // store arguments
+            (*argv)[0] = argv0;  // use the same program name
+            (*argv)[1] = UBUNTU_ARGUMENT;
+            *argc = 2;
+            LOGI("Got arguments from %s\n", UBUNTU_COMMAND_FILE);
+        }
+    }
     // --- if that doesn't work, try the command file
     if (*argc <= 1) {
         FILE *fp = fopen_path(COMMAND_FILE, "r");
@@ -421,7 +443,7 @@ erase_volume(const char *volume) {
         copy_logs();
     }
 
-    ui_set_background(BACKGROUND_ICON_CLOCKWORK);
+    ui_set_background(BACKGROUND_ICON_UBUNTU);
     ui_reset_progress();
     return result;
 }
@@ -759,17 +781,11 @@ static void
 wipe_data(int confirm) {
     if (confirm && !confirm_selection( "Confirm wipe of all user data?", "Yes - Wipe all user data"))
         return;
-
     ui_print("\n-- Wiping data...\n");
-    device_wipe_data();
-    erase_volume("/data");
     erase_volume("/cache");
-    if (has_datadata()) {
-        erase_volume("/datadata");
-    }
-    erase_volume("/sd-ext");
-    erase_volume(get_android_secure_path());
-    ui_print("Data wipe complete.\n");
+    ensure_path_mounted("/cache");
+    write_string_to_file(UBUNTU_COMMAND_FILE, "format data\n");
+    reboot_main_system(ANDROID_RB_RESTART2, 0, "recovery");
 }
 
 static void headless_wait() {
@@ -826,16 +842,8 @@ prompt_and_wait() {
                     }
                     break;
 
-                case ITEM_APPLY_ZIP:
-                    ret = show_install_update_menu();
-                    break;
-
-                case ITEM_NANDROID:
-                    ret = show_nandroid_menu();
-                    break;
-
-                case ITEM_PARTITION:
-                    ret = show_partition_menu();
+                case ITEM_BACKUP_DATA:
+                    ui_print("\n-- Not really backing up data...\n");
                     break;
 
                 case ITEM_ADVANCED:
@@ -858,35 +866,6 @@ print_property(const char *key, const char *name, void *cookie) {
 
 static void
 setup_adbd() {
-    struct stat f;
-    static char *key_src = "/data/misc/adb/adb_keys";
-    static char *key_dest = "/adb_keys";
-
-    // Mount /data and copy adb_keys to root if it exists
-    ensure_path_mounted("/data");
-    if (stat(key_src, &f) == 0) {
-        FILE *file_src = fopen(key_src, "r");
-        if (file_src == NULL) {
-            LOGE("Can't open %s\n", key_src);
-        } else {
-            FILE *file_dest = fopen(key_dest, "w");
-            if (file_dest == NULL) {
-                LOGE("Can't open %s\n", key_dest);
-            } else {
-                char buf[4096];
-                while (fgets(buf, sizeof(buf), file_src)) fputs(buf, file_dest);
-                check_and_fclose(file_dest, key_dest);
-
-                // Enable secure adbd
-                property_set("ro.adb.secure", "1");
-            }
-            check_and_fclose(file_src, key_src);
-        }
-    }
-    preserve_data_media(0);
-    ensure_path_unmounted("/data");
-    preserve_data_media(1);
-
     // Trigger (re)start of adb daemon
     property_set("service.adb.root", "1");
 }
@@ -993,6 +972,9 @@ main(int argc, char **argv) {
             property_set("ctl.stop", argv[1]);
             return 0;
         }
+        /* Make sure stdout is not fully buffered, we don't want to
+         * have issues when calling busybox commands */
+        setlinebuf(stdout);
         return busybox_driver(argc, argv);
     }
     __system("/sbin/postrecoveryboot.sh");
@@ -1029,6 +1011,8 @@ main(int argc, char **argv) {
 
     const char *send_intent = NULL;
     const char *update_package = NULL;
+    const char *update_ubuntu_package = NULL;
+    const char *user_data_update_package = NULL;
     int wipe_data = 0, wipe_cache = 0;
     int sideload = 0;
     int headless = 0;
@@ -1040,6 +1024,7 @@ main(int argc, char **argv) {
         switch (arg) {
         case 's': send_intent = optarg; break;
         case 'u': update_package = optarg; break;
+        case 'd': user_data_update_package = optarg; break;
         case 'w':
 #ifndef BOARD_RECOVERY_ALWAYS_WIPES
         wipe_data = wipe_cache = 1;
@@ -1053,6 +1038,7 @@ main(int argc, char **argv) {
         case 'c': wipe_cache = 1; break;
         case 't': ui_show_text(1); break;
         case 'l': sideload = 1; break;
+        case 'v': update_ubuntu_package = UBUNTU_UPDATE_SCRIPT; break;
         case 'p': shutdown_after = 1; break;
         case '?':
             LOGE("Invalid command argument\n");
@@ -1107,6 +1093,29 @@ main(int argc, char **argv) {
             copy_logs();
             ui_print("Installation aborted.\n");
         }
+    } else if (update_ubuntu_package != NULL) {
+        LOGI("Performing Ubuntu update\n");
+        ui_set_background(BACKGROUND_ICON_INSTALLING);
+        ui_show_indeterminate_progress();
+        ui_print("Installing Ubuntu update.\n");
+
+
+        if (ensure_path_mounted("/data") != 0) {
+            LOGE("Ubuntu update failed\n");
+            ui_set_background(BACKGROUND_ICON_ERROR);
+            pause();
+        } else {
+            char tmp[PATH_MAX];
+            sprintf(tmp, "%s %s", UBUNTU_UPDATE_SCRIPT, UBUNTU_COMMAND_FILE );
+            if (__system(tmp) != 0) {
+                LOGE("Ubuntu update failed\n");
+                ui_set_background(BACKGROUND_ICON_ERROR);
+                pause();
+            } else {
+                LOGI("Ubuntu update complete\n");
+                ui_print("Ubuntu update complete.\n");
+            }
+        }
     } else if (wipe_data) {
         if (device_wipe_data()) status = INSTALL_ERROR;
         preserve_data_media(0);
@@ -1133,7 +1142,7 @@ main(int argc, char **argv) {
         is_user_initiated_recovery = 1;
         if (!headless) {
             ui_set_show_text(1);
-            ui_set_background(BACKGROUND_ICON_CLOCKWORK);
+            ui_set_background(BACKGROUND_ICON_UBUNTU);
         }
 
         if (extendedcommand_file_exists()) {
@@ -1164,6 +1173,12 @@ main(int argc, char **argv) {
     if (headless) {
         headless_wait();
     }
+
+    if (user_data_update_package != NULL) {
+        status = install_package(user_data_update_package);
+        if (status != INSTALL_SUCCESS) ui_print("Installation aborted.\n");
+    }
+
     if (status != INSTALL_SUCCESS && !is_user_initiated_recovery) {
         ui_set_show_text(1);
         ui_set_background(BACKGROUND_ICON_ERROR);

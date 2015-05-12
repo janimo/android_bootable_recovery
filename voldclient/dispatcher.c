@@ -198,7 +198,7 @@ static void vold_handle_volume_removed(char* label, char* path) {
         callbacks->disk_removed(label, path);
 }
 
-int vold_dispatch(int code, char** tokens, int len) {
+int vold_dispatch(int code, char** tokens) {
 
     int i = 0;
     int ret = 0;

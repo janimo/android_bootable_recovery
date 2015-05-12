@@ -21,6 +21,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <sys/wait.h>
 
 #include <fs_mgr.h>
 #include "mtdutils/mtdutils.h"
@@ -158,6 +159,25 @@ char* get_android_secure_path() {
     return android_secure_path;
 }
 
+int try_e2fsck (const char *device) {
+    char *const e2fsck_cmd[] = {"/sbin/e2fsck", "-fy", device, NULL};
+
+    pid_t pid;
+    int status;
+    pid = fork();
+    if (pid == 0) {
+        execv(e2fsck_cmd[0], e2fsck_cmd);
+        fprintf(stderr, "E:Can't run (%s)\n",strerror(errno));
+        _exit(-1);
+    }
+
+    waitpid(pid, &status, 0);
+    if (!WIFEXITED(status)) {
+        return -1;
+    }
+    return WEXITSTATUS(status);
+}
+
 int try_mount(const char* device, const char* mount_point, const char* fs_type, const char* fs_options) {
     if (device == NULL || mount_point == NULL || fs_type == NULL)
         return -1;
@@ -270,6 +290,18 @@ int ensure_path_mounted_at_mount_point(const char* path, const char* mount_point
     }
 
     mkdir(mount_point, 0755);  // in case it doesn't already exist
+
+    // if the fs is of type ext?, we wan't to check it before mounting
+    if (strcmp(v->fs_type, "ext4") == 0 ||
+        strcmp(v->fs_type, "ext3") == 0 ||
+        strcmp(v->fs_type, "ext2") == 0) {
+        LOGI("fsck to be run for mountpoint %s\n", v->mount_point);
+        result = try_e2fsck(v->blk_device);
+        if ((result != 0) && (result != 1)) {
+            LOGE("e2fsck check for device [%s] failed with %d\n", v->blk_device, result);
+            return result;
+        }
+    }
 
     if (fs_mgr_is_voldmanaged(v)) {
         return vold_mount_volume(mount_point, 1) == CommandOkay ? 0 : -1;

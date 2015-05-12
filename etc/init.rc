@@ -105,6 +105,9 @@ service vold /sbin/minivold
     ioprio be 2
     seclabel u:r:recovery:s0
 
+on property:sys.powerctl=*
+    powerctl ${sys.powerctl}
+
 # setup_adbd will start adb once it has checked the keys
 on property:service.adb.root=1
     write /sys/class/android_usb/android0/enable 0

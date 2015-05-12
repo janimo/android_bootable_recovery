@@ -48,7 +48,7 @@ RECOVERY_NAME := ClockworkMod Recovery
 LOCAL_CFLAGS += -DI_AM_KOUSH
 else
 ifndef RECOVERY_NAME
-RECOVERY_NAME := CWM-based Recovery
+RECOVERY_NAME := Ubuntu Touch (CWM-based) Recovery
 endif
 endif
 
@@ -190,6 +190,14 @@ $(RECOVERY_SYMLINKS):
 	@rm -rf $@
 	$(hide) ln -sf $(RECOVERY_BINARY) $@
 
+RECOVERY_SKIP_GPG: $(LOCAL_INSTALLED_MODULE)
+ifeq ($(TARGET_RECOVERY_SKIP_GPG_VERIFICATION), true)
+	@mkdir -p $(TARGET_RECOVERY_ROOT_OUT)/etc/system-image
+	@touch $(TARGET_RECOVERY_ROOT_OUT)/etc/system-image/skip-gpg-verification
+endif
+
+ALL_DEFAULT_INSTALLED_MODULES += RECOVERY_SKIP_GPG
+
 # Now let's do recovery symlinks
 $(RECOVERY_BUSYBOX_SYMLINKS): BUSYBOX_BINARY := busybox
 $(RECOVERY_BUSYBOX_SYMLINKS):
@@ -204,6 +212,30 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_CLASS := RECOVERY_EXECUTABLES
 LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/sbin
 LOCAL_SRC_FILES := killrecovery.sh
+include $(BUILD_PREBUILT)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := system-image-upgrader
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := RECOVERY_EXECUTABLES
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/sbin
+LOCAL_SRC_FILES := $(LOCAL_MODULE)
+include $(BUILD_PREBUILT)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := archive-master.tar.xz
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := RECOVERY_ETC
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/etc/system-image
+LOCAL_SRC_FILES := archive-master.tar.xz
+include $(BUILD_PREBUILT)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := archive-master.tar.xz.asc
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_CLASS := RECOVERY_ETC
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/etc/system-image
+LOCAL_SRC_FILES := archive-master.tar.xz.asc
 include $(BUILD_PREBUILT)
 
 include $(CLEAR_VARS)
@@ -240,6 +272,7 @@ include $(commands_recovery_local_path)/utilities/Android.mk
 include $(commands_recovery_local_path)/su/Android.mk
 include $(commands_recovery_local_path)/voldclient/Android.mk
 include $(commands_recovery_local_path)/loki/Android.mk
+include external/gpg/Android.mk
 commands_recovery_local_path :=
 
 endif
