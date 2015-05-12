@@ -139,7 +139,7 @@ static int get_filtered_menu_selection(const char** headers, char** items, int m
     return ret;
 }
 
-static void write_string_to_file(const char* filename, const char* string) {
+void write_string_to_file(const char* filename, const char* string) {
     ensure_path_mounted(filename);
     char tmp[PATH_MAX];
     sprintf(tmp, "mkdir -p $(dirname %s)", filename);
