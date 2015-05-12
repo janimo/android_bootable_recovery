@@ -172,8 +172,7 @@ LOCAL_ADDITIONAL_DEPENDENCIES += \
     minivold \
     recovery_e2fsck \
     recovery_mke2fs \
-    recovery_tune2fs \
-    mount.exfat_static
+    recovery_tune2fs
 
 LOCAL_ADDITIONAL_DEPENDENCIES += $(RECOVERY_SYMLINKS) $(RECOVERY_BUSYBOX_SYMLINKS)
 
